@@ -29,6 +29,8 @@
 #include <Bounce2.h>
 #include <ResponsiveAnalogRead.h>
 
+// mmmmmm
+
 // Rotary Encoder Switches
 
 #define LEFT_RE_SWITCH_PIN   29
@@ -115,7 +117,6 @@ bool displayNeedsUpdate = false;
 uint8_t currentMenu = 0;
 uint8_t lastMenuSelection = 0;
 // menu up/down selections
-//uint8_t currentMenuSelection = 0;
 uint8_t mainMenuPosition = 0;
 uint8_t modMenuPosition = 0;
 uint8_t assignMenuPosition = 0;
