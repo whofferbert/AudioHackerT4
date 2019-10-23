@@ -75,8 +75,7 @@ long rightREPos = 0;
 // GUItool: begin automatically generated code
 AudioInputI2S            i2s2;           //xy=288.23333740234375,264.23333740234375
 AudioAnalyzePeak         peak1;          //xy=507.23333740234375,114.23332977294922
-//AudioAnalyzeFFT1024      fft1024_1;      //xy=516.2333374023438,191.23333740234375
-AudioAnalyzeNoteFrequency notefreq1;      //xy=514.2333374023438,210.23333740234375
+AudioAnalyzeNoteFrequency notefreq1;     //xy=514.2333374023438,210.23333740234375
 AudioOutputI2S           i2s1;           //xy=668.2333374023438,299.23333740234375
 AudioConnection          patchCord1(i2s2, 1, i2s1, 0);
 AudioConnection          patchCord2(i2s2, 1, i2s1, 1);
@@ -290,16 +289,10 @@ void updatePedalScreen() {
   // should check if current menu is different than last
   // if so, blank and reset some things
   if (currentMenu != lastMenuSelection) {
-    // redraw menu
-    //if (lastMenuSelection == 0) {
-      drawPedalMenu(ILI9341_BLACK,ILI9341_BLACK,ILI9341_BLACK);
-      //black text print
-    //} else if (lastMenuSelection == 1) {
-      //black text print
-    //} else if (lastMenuSelection == 2){
-      //black text print
-    //}
+    // set the text to black
+    drawPedalMenu(ILI9341_BLACK, ILI9341_BLACK, ILI9341_BLACK);
     lastMenuSelection = currentMenu;
+    // maybe do the pointer switches here ...
   }
   if (currentMenu == 0) {
     // switch pointers around
@@ -308,14 +301,11 @@ void updatePedalScreen() {
     menuPositionPointer = &mainMenuPosition;
     drawPedalMenu(ILI9341_GREEN,ILI9341_RED,ILI9341_BLUE);
   } else if (currentMenu == 1) {
-    //drawPedalMenu(ILI9341_GREEN,ILI9341_RED,ILI9341_BLUE);
-    // mmmm
     menuPointer = modMenu;
     menuLengthPointer = &modMenuSize;
     menuPositionPointer = &modMenuPosition;
     drawPedalMenu(ILI9341_GREEN,ILI9341_BLUE,ILI9341_RED);
   } else if (currentMenu == 2) {
-    // something
     menuPointer = assignMenu;
     menuLengthPointer = &assignMenuSize;
     menuPositionPointer = &assignMenuPosition;
@@ -553,6 +543,17 @@ void timeoutMenuInactivity() {
   }
 }
 
+// this is here for benchmarking
+unsigned long lastCPUReportTime = 0;
+unsigned long CPUReportDelayTimer = 500;
+void serialCPUReport() {
+  unsigned long currentTime = millis();
+  if (currentTime - lastCPUReportTime > CPUReportDelayTimer) {
+    lastCPUReportTime = currentTime;
+    Serial.println(AudioProcessorUsage());
+  }
+}
+
 // for best effect with freqAndNote, make your terminal/monitor 
 // a minimum of 62 chars wide, and as tall as you can.
 void loop() {
@@ -574,4 +575,6 @@ void loop() {
     //Serial.println("updating display ...");
     updatePedalScreen();
   }
+
+  serialCPUReport();
 }
