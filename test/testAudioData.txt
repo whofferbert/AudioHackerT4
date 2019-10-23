@@ -1,0 +1,60 @@
+#include <Audio.h>
+#include <Wire.h>
+#include <SPI.h>
+#include <SD.h>
+#include <SerialFlash.h>
+
+// GUItool: begin automatically generated code
+AudioInputI2S            i2s2;           //xy=68.23335266113281,59.23334503173828
+AudioSynthWaveform       waveform1;      //xy=86.28334045410156,288.2833251953125
+AudioSynthKarplusStrong  string1;        //xy=91.28334045410156,248.2833251953125
+AudioSynthSimpleDrum     drum1;          //xy=96.28334045410156,211.2833251953125
+AudioSynthWaveformModulated waveformMod1;   //xy=96.28334045410156,335.2833251953125
+AudioSynthToneSweep      tonesweep1;     //xy=101.28334045410156,394.2833251953125
+AudioSynthWaveformSine   sine1;          //xy=103.28334045410156,114.28333282470703
+AudioSynthWaveformSineModulated sine_fm1;       //xy=104.28334045410156,169.2833251953125
+AudioSynthNoiseWhite     noise1;         //xy=117.28334045410156,443.2833251953125
+AudioAmplifier           amp1;           //xy=232.28334045410156,52.28333282470703
+AudioSynthNoisePink      pink1;          //xy=248.2833251953125,484.2833251953125
+AudioMixer4              mixer1;         //xy=298.2833251953125,209.2833251953125
+AudioMixer4              mixer2;         //xy=306.2833251953125,285.2833251953125
+AudioAnalyzePeak         peak1;          //xy=421.23333740234375,104.23332977294922
+AudioAnalyzeNoteFrequency notefreq1;      //xy=451.23333740234375,140.23333740234375
+AudioMixer4              mixer3;         //xy=451.2833251953125,231.2833251953125
+AudioMixer4              mixer4;         //xy=455.2833251953125,369.2833251953125
+AudioEffectFade          fade2;          //xy=621.2833251953125,127.28333282470703
+AudioEffectBitcrusher    bitcrusher1;    //xy=621.2833251953125,168.2833251953125
+AudioEffectReverb        reverb1;        //xy=631.2833251953125,246.2833251953125
+AudioEffectChorus        chorus1;        //xy=636.2833251953125,210.2833251953125
+AudioEffectDelay         delay1;         //xy=646.2833251953125,342.2833251953125
+AudioOutputI2S           i2s1;           //xy=671.2333374023438,473.23333740234375
+AudioConnection          patchCord1(i2s2, 1, peak1, 0);
+AudioConnection          patchCord2(i2s2, 1, notefreq1, 0);
+AudioConnection          patchCord3(i2s2, 1, amp1, 0);
+AudioConnection          patchCord4(waveform1, 0, mixer2, 0);
+AudioConnection          patchCord5(string1, 0, mixer1, 3);
+AudioConnection          patchCord6(drum1, 0, mixer1, 2);
+AudioConnection          patchCord7(waveformMod1, 0, mixer2, 1);
+AudioConnection          patchCord8(tonesweep1, 0, mixer2, 2);
+AudioConnection          patchCord9(sine1, sine_fm1);
+AudioConnection          patchCord10(sine1, 0, mixer1, 0);
+AudioConnection          patchCord11(sine_fm1, 0, mixer1, 1);
+AudioConnection          patchCord12(sine_fm1, 0, waveformMod1, 0);
+AudioConnection          patchCord13(noise1, 0, mixer2, 3);
+AudioConnection          patchCord14(amp1, 0, mixer3, 0);
+AudioConnection          patchCord15(pink1, 0, mixer3, 3);
+AudioConnection          patchCord16(mixer1, 0, mixer3, 1);
+AudioConnection          patchCord17(mixer2, 0, mixer3, 2);
+AudioConnection          patchCord18(mixer3, fade2);
+AudioConnection          patchCord19(mixer3, 0, mixer4, 0);
+AudioConnection          patchCord20(mixer4, 0, i2s1, 0);
+AudioConnection          patchCord21(mixer4, 0, i2s1, 1);
+AudioConnection          patchCord22(fade2, bitcrusher1);
+AudioConnection          patchCord23(bitcrusher1, chorus1);
+AudioConnection          patchCord24(reverb1, delay1);
+AudioConnection          patchCord25(reverb1, 0, mixer4, 2);
+AudioConnection          patchCord26(chorus1, reverb1);
+AudioConnection          patchCord27(delay1, 0, mixer4, 1);
+AudioControlSGTL5000     sgtl5000_1;     //xy=477.23333740234375,486.23333740234375
+// GUItool: end automatically generated code
+
