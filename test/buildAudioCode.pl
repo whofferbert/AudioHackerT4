@@ -89,6 +89,7 @@ sub fileMatcher {
 }
 
 sub buildIncludeFileList {
+  print STDERR "Gathering all related libraries ...";
   my ($includeRef) = @_;
   my @includeShortNames = @{$includeRef};
   my @includePaths;
@@ -100,26 +101,35 @@ sub buildIncludeFileList {
   
 
   while ($currentNumIncludes ne $lastNumIncludes) {
-    say "$currentNumIncludes ne $lastNumIncludes";
+    {
+      $| = 1;
+      print STDERR ".";
+      #say "$currentNumIncludes ne $lastNumIncludes";
+    }
     $lastNumIncludes = scalar @includeShortNames;
     for my $file (@libraryFiles) {
       my $shortName = ($file =~ /.*\/([^\/]+)$/)[0];
-      if (grep {$shortName =~ /$_/i} @includeShortNames) {
-        say "Found $shortName in wanted includes";
+      if (grep {$shortName =~ /\b$_\b/i} @includeShortNames) {
+        #say "Found $shortName in wanted includes";
         # match
         next if grep {$file eq $_} @includePaths;
         push(@includePaths, $file) unless grep {$file eq $_} @includePaths;
-        push(@includeShortNames, $shortName) unless grep {$shortName =~ /$_/i} @includeShortNames;
+        push(@includeShortNames, $shortName) unless grep {$shortName =~ /\b$_\b/i} @includeShortNames;
         for my $extraInclude (&getIncludesFromFile($file)) {
-          push(@includeShortNames, $extraInclude) unless grep {$extraInclude =~ /$_/i} @includeShortNames;
+          push(@includeShortNames, $extraInclude) unless grep {$extraInclude =~ /\b$_\b/i} @includeShortNames;
         }
       }
     }
     $currentNumIncludes = scalar @includeShortNames;
   }
+  {
+    $| = 1;
+    print STDERR "\n";
+  }
   #say Dumper(\@libraryFiles);
   #say Dumper(\@includePaths);
-  say Dumper(\@includeShortNames);
+  #say Dumper(\@includeShortNames);
+  return (@includePaths);
 }
 
 sub getIncludesFromFile {
@@ -127,19 +137,86 @@ sub getIncludesFromFile {
   my @includes;
   open my $FH, "<", $file or die $!;
   while (my $line = <$FH>) {
-    if ($line =~ /#include\s+(?:[<"]([^>"]+)[>"])/) {
+    if ($line =~ /^\s*#include\s+(?:[<"]([^>"]+)[>"])/) {
       #say "$file includes $1";
       push(@includes, $1);
     }
   }
+  close $FH;
   return @includes;
+}
+
+sub getDataClasses {
+  my ($file) = @_;
+  my @types;
+  open my $FH, "<", $file or die $!;
+  while (my $line = <$FH>) {
+    if ($line =~ /^(\w+)\s+\w+;/) {
+      push @types, $1;
+    }
+  }
+  close $FH;
+  return (@types);
+}
+
+sub findClassStuffInLibs {
+  #return;
+  my %stuff;
+  my ($reqRef, $fileRef) = @_;
+  my @required = @{$reqRef};
+  my @files = @{$fileRef};
+
+  my $regex = join"|", @required;
+
+  for my $file (@files) {
+    my $fileData;
+    open my $FH, "<", $file or die $!;
+    while (my $line = <$FH>) {
+      $fileData .= $line;
+    }
+    close $FH;
+    # now look through data for matching things
+    # if match, look for subs
+    #while ($fileData =~ /(class\s+\b($regex)\b.*?\n\s*\}\;)/sg) {
+    while ($fileData =~ /(class\s+\b($regex)\b.*?\n\}\;)/sg) {
+      # matched file on class
+      my $classMatch = $1;
+      my $matchedReq = $2;
+      #if ($matchedReq eq "AudioSynthSimpleDrum") {
+      #  say $classMatch;
+      #}
+      my $scrubData;
+      if ($classMatch =~ /\n\s*protected:/s) {
+        $scrubData = ($classMatch =~ /^(.*)(?=\nprotected:)/s)[0];
+      } elsif ($classMatch =~ /\n\s*private:/s) {
+        $scrubData = ($classMatch =~ /^(.*)(?=\nprivate:)/s)[0];
+      } else {
+        $scrubData = $classMatch;
+      }
+      if (! defined $scrubData) {
+        say "WTF is up with $file ??";
+        next;
+      }
+      # fuck.... we will have to look for voids here as well
+      while ($scrubData =~ /((?:(?:\w+ )?(?:void|bool|short))\s+\w+\s*\((?!void)[^\)]+\))/sg) {
+        say "in $file Found parameter func $1 for $matchedReq";
+      }
+      while ($scrubData =~ /(?<!virtual )(void\s+\w+\s*\((?:void|)\))/sg) {
+        say "in $file Found void func $1 for $matchedReq";
+      }
+    }
+  }
+  return (%stuff);
 }
 
 sub main {
   &handle_args;			# deal with arguments
   &sanity;			# make sure things make sense
+  my @audioDataReqs = &getDataClasses($inAudioFile);
   my @includes = &getIncludesFromFile($inAudioFile);
   my @fullIncludeList = &buildIncludeFileList(\@includes);
+  #say join "\n", @fullIncludeList;
+  my %data = &findClassStuffInLibs(\@audioDataReqs, \@fullIncludeList);
   # so the idea here is to take a chunk of audio code (get that from argument parsing) and
   # understand what's in there, to write a bunch of c++ code for the teensy. then recompile it all
   # hoo boy.
