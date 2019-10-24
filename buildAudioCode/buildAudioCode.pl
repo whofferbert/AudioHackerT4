@@ -6,6 +6,7 @@ use 5.010;				# say
 use strict;				# good form
 use warnings;				# know when stuff is wrong
 use Data::Dumper;			# debug
+$Data::Dumper::Sortkeys = 1;		# woooo!
 use File::Basename;			# know where the script lives
 use File::Find;
 use Getopt::Long;			# handle arguments
@@ -19,7 +20,7 @@ my $inAudioFileData;
 my $inLibraryPath;
 my @libraryFiles;
 
-my $cppTypesRegex = "void|bool|short|long|int|uint8_t";
+my $cppTypesRegex = "void|bool|short|long|int|uint8_t|float";
 
 # Functions
 
@@ -239,42 +240,100 @@ sub findClassStuffInLibs {
 # and then reference this against known things to adjust stuff... ?
 #
 sub cppCallDeconstructor {
-  my ($cpp) = @_;
-  my ($type, $name, @params);
-  if ($cpp =~ /((?:\w+ )?(?:$cppTypesRegex))\s*([^\s\(]+)\(([^\)]*)\)/) {
-    ## descrbe things
-    $type = $1;
-    $name = $2;
-    my $bits = $3;
-    say "Got type $type for name $name with this: $bits";
-    for my $bit (split(/\s*,/, $bits)) {
-      # pointers we can't ignorantly adjust, we'll have to handle them differently
-      # the other things we can kinda fudge, i think
+  my ($effectName, $effectType, $cpp) = @_;
+  #my ($cpp) = @_;
+  my %hash;
+
+  my $cppTypeNameRegex = '(\S+(?: \S+)?)\s+(\S+)$';
+
+  if ($cpp =~ /([^\(]+)\(([^\)]*)\)/) {
+    my $typeAndObject = $1;
+    my $parenEnclosure = $2;
+    #say "start: $start ; parens: $parens";
+    # set up typeAndObject
+    if ($typeAndObject =~ /$cppTypeNameRegex/) {
+      my $callType = $1;
+      my $callName = $2;
+
+      # mmmm
+      if ($callName =~ /begin/) {
+        # skip begin ?
+        return;
+      }
+
+      $hash{effectName} = $effectName;
+      $hash{effectType} = $effectType;
+      $hash{callType} = $callType;
+      $hash{callName} = $callName;
+    }
+    if ($parenEnclosure =~ /\S+/) {
+      for my $param (split(/\,\s*/, $parenEnclosure)) {
+        # skip pointers because we can't ignorantly change them
+        next if $param =~ /\*/;
+        if ($param =~ /$cppTypeNameRegex/) {
+          my $paramType = $1;
+          my $paramName = $2;
+          my @paramTuple = ($1, $2);
+          push(@{$hash{params}}, \@paramTuple);
+        }
+      }
+    } else { 
+      # NOTE this is DIFFERENT. it's ON/OFF. footswitches and the like
+      $hash{bool} = 1;
     }
   }
+  return %hash;
 }
 
-sub buildCppCodeFromGarbage {
+sub buildCppStructFromGarbage {
   my ($objClassRef, $dataRef) = @_;
   my %objectsOfClasses = %{$objClassRef};
   my %data = %{$dataRef};
+  #say Dumper(\%data); exit;
+  my @struct;
   for my $specificEffect (sort keys %objectsOfClasses) {
+    my @effectSettings;
     my $effectType = $objectsOfClasses{$specificEffect};
+    # 
+    #  TODO fuck. function name overloading means that we have 
+    #  to account for multiple functions named the same, but wityh
+    #  different parameter lists. That'll be a name adjustment for the menu
+    #  but we have to keep it pointed at the right thing. .....
+    # 
+    #  but since we call the deconstructor once on eevery call
+    #  we can get the return from it, and parse the dumb out later
+    # 
+    # 
     if (exists $data{$effectType}{paramFuncs}) {
       # param stuff
       for my $modifier (@{$data{$effectType}{paramFuncs}}) {
-        say "Name:\t$specificEffect\tParam:\t$modifier";
-        say &cppCallDeconstructor($modifier);
+        my %layout = &cppCallDeconstructor($specificEffect, $effectType, $modifier);
+        push(@effectSettings, \%layout)
       }
     }
     if (exists $data{$effectType}{voidFuncs}) {
       # void stuff
       for my $modifier (@{$data{$effectType}{voidFuncs}}) {
-        say "Name:\t$specificEffect\t VOID:\t$modifier";
-        say &cppCallDeconstructor($modifier);
+        next if $modifier =~ /\bbegin\b/;
+        my %void = &cppCallDeconstructor($specificEffect, $effectType, $modifier);
+        unless (keys %void) {
+          say "major malfunction: $specificEffect $effectType $modifier";
+          next;
+        }
+        #say "VOOOOOOOOOOOOID";
+        #say Dumper(\%void);
+        push(@effectSettings, \%void);
       }
     }
+    if (scalar @effectSettings == 0) {
+      say "BUTTHOLES: $specificEffect";
+      say Dumper($objectsOfClasses{$specificEffect});
+    } else {
+      ## stuff
+      push(@struct, \@effectSettings);
+    }
   }
+  return @struct;
 }
 
 
@@ -291,7 +350,17 @@ sub main {
   #say Dumper(\%data);
 
   ## mmmm ... sort by first array element of hash objects
-  my $cppOut = &buildCppCodeFromGarbage(\%objectsOfClasses, \%data);
+  my @menuStruct = &buildCppStructFromGarbage(\%objectsOfClasses, \%data);
+  #say Dumper(\@menuStruct);
+  #say Dumper(\$menuStruct[0]);
+  for my $bit (@menuStruct) {
+    my @arr = @{$bit};
+    # TODO this seems broken
+    next unless @arr;
+    my $effectName = $arr[0]{effectName};
+    say $effectName;
+    say Dumper(\$bit);
+  }
   # so the idea here is to take a chunk of audio code (get that from argument parsing) and
   # understand what's in there, to write a bunch of c++ code for the teensy. then recompile it all
   # hoo boy.
