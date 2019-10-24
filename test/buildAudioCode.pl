@@ -15,8 +15,11 @@ use Getopt::Long;			# handle arguments
 my $prog = basename($0);
 
 my $inAudioFile;
+my $inAudioFileData;
 my $inLibraryPath;
 my @libraryFiles;
+
+my $cppTypesRegex = "void|bool|short|long|int|uint8_t";
 
 # Functions
 
@@ -126,9 +129,6 @@ sub buildIncludeFileList {
     $| = 1;
     print STDERR "\n";
   }
-  #say Dumper(\@libraryFiles);
-  #say Dumper(\@includePaths);
-  #say Dumper(\@includeShortNames);
   return (@includePaths);
 }
 
@@ -146,21 +146,45 @@ sub getIncludesFromFile {
   return @includes;
 }
 
-sub getDataClasses {
-  my ($file) = @_;
-  my @types;
-  open my $FH, "<", $file or die $!;
+sub readAudioFileData {
+  open my $FH, "<", $inAudioFile or die $!;
   while (my $line = <$FH>) {
+    $inAudioFileData .= $line;
+  }
+  close $FH;
+}
+
+sub getClassObjects {
+  my %HoA;
+  for my $line (split(/\n/, $inAudioFileData)) {
+    if ($line =~ /^(\w+)\s+([\w_]+);/) {
+      push(@{$HoA{$1}}, $2);
+    }
+  }
+  return (%HoA);
+}
+
+sub getAudioClasses {
+  my @types;
+  for my $line (split(/\n/, $inAudioFileData)) {
     if ($line =~ /^(\w+)\s+\w+;/) {
       push @types, $1;
     }
   }
-  close $FH;
   return (@types);
 }
 
+sub getObjectsOfClasses {
+  my %H;
+  for my $line (split(/\n/, $inAudioFileData)) {
+    if ($line =~ /^(\w+)\s+([\w_]+);/) {
+      $H{$2} = $1;
+    }
+  }
+  return (%H);
+}
+
 sub findClassStuffInLibs {
-  #return;
   my %stuff;
   my ($reqRef, $fileRef) = @_;
   my @required = @{$reqRef};
@@ -175,21 +199,15 @@ sub findClassStuffInLibs {
       $fileData .= $line;
     }
     close $FH;
-    # now look through data for matching things
-    # if match, look for subs
-    #while ($fileData =~ /(class\s+\b($regex)\b.*?\n\s*\}\;)/sg) {
     while ($fileData =~ /(class\s+\b($regex)\b.*?\n\}\;)/sg) {
       # matched file on class
       my $classMatch = $1;
       my $matchedReq = $2;
-      #if ($matchedReq eq "AudioSynthSimpleDrum") {
-      #  say $classMatch;
-      #}
       my $scrubData;
       if ($classMatch =~ /\n\s*protected:/s) {
         $scrubData = ($classMatch =~ /^(.*)(?=\nprotected:)/s)[0];
       } elsif ($classMatch =~ /\n\s*private:/s) {
-        $scrubData = ($classMatch =~ /^(.*)(?=\nprivate:)/s)[0];
+        $scrubData = ($classMatch =~ /^(.*)(?=\n\s*private:)/s)[0];
       } else {
         $scrubData = $classMatch;
       }
@@ -197,26 +215,83 @@ sub findClassStuffInLibs {
         say "WTF is up with $file ??";
         next;
       }
-      # fuck.... we will have to look for voids here as well
-      while ($scrubData =~ /((?:(?:\w+ )?(?:void|bool|short))\s+\w+\s*\((?!void)[^\)]+\))/sg) {
-        say "in $file Found parameter func $1 for $matchedReq";
+      # fuck.... we will have to look for voids and all sorts of shit here as well
+      my $foundFuncs = 0;
+      while ($scrubData =~ /((?:(?:\w+ )?(?:$cppTypesRegex))\s+\w+\s*\((?!\s*void)[^\)]+\))/sg) {
+        push(@{$stuff{$matchedReq}{paramFuncs}}, $1);
+        $foundFuncs = 1;
       }
-      while ($scrubData =~ /(?<!virtual )(void\s+\w+\s*\((?:void|)\))/sg) {
-        say "in $file Found void func $1 for $matchedReq";
+      while ($scrubData =~ /(?<!virtual )(void\s+\w+\s*\((?:\s*void|)\))/sg) {
+        push(@{$stuff{$matchedReq}{voidFuncs}}, $1);
+        $foundFuncs = 1;
+      }
+      if ($foundFuncs == 1) {
+        $stuff{$matchedReq}{file} = $file;
       }
     }
   }
   return (%stuff);
 }
 
+
+#
+# TODO this might need to accept another variable of the type of plugin
+# and then reference this against known things to adjust stuff... ?
+#
+sub cppCallDeconstructor {
+  my ($cpp) = @_;
+  my ($type, $name, @params);
+  if ($cpp =~ /((?:\w+ )?(?:$cppTypesRegex))\s*([^\s\(]+)\(([^\)]*)\)/) {
+    ## descrbe things
+    $type = $1;
+    $name = $2;
+    my $bits = $3;
+    say "Got type $type for name $name with this: $bits";
+    for my $bit (split(/\s*,/, $bits)) {
+      # pointers we can't ignorantly adjust, we'll have to handle them differently
+      # the other things we can kinda fudge, i think
+    }
+  }
+}
+
+sub buildCppCodeFromGarbage {
+  my ($objClassRef, $dataRef) = @_;
+  my %objectsOfClasses = %{$objClassRef};
+  my %data = %{$dataRef};
+  for my $specificEffect (sort keys %objectsOfClasses) {
+    my $effectType = $objectsOfClasses{$specificEffect};
+    if (exists $data{$effectType}{paramFuncs}) {
+      # param stuff
+      for my $modifier (@{$data{$effectType}{paramFuncs}}) {
+        say "Name:\t$specificEffect\tParam:\t$modifier";
+        say &cppCallDeconstructor($modifier);
+      }
+    }
+    if (exists $data{$effectType}{voidFuncs}) {
+      # void stuff
+      for my $modifier (@{$data{$effectType}{voidFuncs}}) {
+        say "Name:\t$specificEffect\t VOID:\t$modifier";
+        say &cppCallDeconstructor($modifier);
+      }
+    }
+  }
+}
+
+
 sub main {
   &handle_args;			# deal with arguments
   &sanity;			# make sure things make sense
-  my @audioDataReqs = &getDataClasses($inAudioFile);
+  &readAudioFileData;
+  my @audioDataReqs = &getAudioClasses;
+  my %classObjects = &getClassObjects;
+  my %objectsOfClasses = &getObjectsOfClasses;
   my @includes = &getIncludesFromFile($inAudioFile);
   my @fullIncludeList = &buildIncludeFileList(\@includes);
-  #say join "\n", @fullIncludeList;
   my %data = &findClassStuffInLibs(\@audioDataReqs, \@fullIncludeList);
+  #say Dumper(\%data);
+
+  ## mmmm ... sort by first array element of hash objects
+  my $cppOut = &buildCppCodeFromGarbage(\%objectsOfClasses, \%data);
   # so the idea here is to take a chunk of audio code (get that from argument parsing) and
   # understand what's in there, to write a bunch of c++ code for the teensy. then recompile it all
   # hoo boy.
