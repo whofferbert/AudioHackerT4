@@ -20,7 +20,7 @@ my $inAudioFileData;
 my $inLibraryPath;
 my @libraryFiles;
 
-my $cppTypesRegex = "void|bool|short|long|int|uint8_t|float";
+my $cppTypesRegex = "void|bool|boolean|short|long|int|uint8_t|float";
 
 # Functions
 
@@ -204,9 +204,17 @@ sub findClassStuffInLibs {
       # matched file on class
       my $classMatch = $1;
       my $matchedReq = $2;
+
+      #  TODO
+      #  DEBUG
+      # 
+      say STDERR $fileData if $matchedReq =~ /AudioEffectChorus|AudioAnalyzeNoteFrequency/;
+      # 
+      # 
+
       my $scrubData;
       if ($classMatch =~ /\n\s*protected:/s) {
-        $scrubData = ($classMatch =~ /^(.*)(?=\nprotected:)/s)[0];
+        $scrubData = ($classMatch =~ /^(.*)(?=\n\s*protected:)/s)[0];
       } elsif ($classMatch =~ /\n\s*private:/s) {
         $scrubData = ($classMatch =~ /^(.*)(?=\n\s*private:)/s)[0];
       } else {
@@ -222,7 +230,8 @@ sub findClassStuffInLibs {
         push(@{$stuff{$matchedReq}{paramFuncs}}, $1);
         $foundFuncs = 1;
       }
-      while ($scrubData =~ /(?<!virtual )(void\s+\w+\s*\((?:\s*void|)\))/sg) {
+      #while ($scrubData =~ /(?<!virtual )(void\s+\w+\s*\((?:\s*void|)\))/sg) {
+      while ($scrubData =~ /(?<!virtual )((?:$cppTypesRegex)\s+\w+\s*\((?:\s*void|)\s*\))/sg) {
         push(@{$stuff{$matchedReq}{voidFuncs}}, $1);
         $foundFuncs = 1;
       }
@@ -294,6 +303,12 @@ sub buildCppStructFromGarbage {
   for my $specificEffect (sort keys %objectsOfClasses) {
     my @effectSettings;
     my $effectType = $objectsOfClasses{$specificEffect};
+    # nothing to do in these
+    next if $effectType =~ /AudioOutputI2S|AudioInputI2S/;
+    #if ($effectType =~ /AudioOutputI2S|AudioInputI2S/) {
+    #  delete $objectsOfClasses{$specificEffect};
+    #  next;
+    #}
     # 
     #  TODO fuck. function name overloading means that we have 
     #  to account for multiple functions named the same, but wityh
@@ -308,7 +323,11 @@ sub buildCppStructFromGarbage {
       # param stuff
       for my $modifier (@{$data{$effectType}{paramFuncs}}) {
         my %layout = &cppCallDeconstructor($specificEffect, $effectType, $modifier);
-        push(@effectSettings, \%layout)
+        if (keys %layout) {
+          push(@effectSettings, \%layout)
+        } else {
+          say STDERR "$specificEffect $effectType has broken paramFunc";
+        }
       }
     }
     if (exists $data{$effectType}{voidFuncs}) {
@@ -320,14 +339,12 @@ sub buildCppStructFromGarbage {
           say "major malfunction: $specificEffect $effectType $modifier";
           next;
         }
-        #say "VOOOOOOOOOOOOID";
-        #say Dumper(\%void);
         push(@effectSettings, \%void);
       }
     }
     if (scalar @effectSettings == 0) {
-      say "BUTTHOLES: $specificEffect";
-      say Dumper($objectsOfClasses{$specificEffect});
+      say STDERR "BUTTHOLES: $specificEffect ; $effectType";
+      #say STDERR Dumper(\%{$data{$effectType}});
     } else {
       ## stuff
       push(@struct, \@effectSettings);
@@ -344,22 +361,28 @@ sub main {
   my @audioDataReqs = &getAudioClasses;
   my %classObjects = &getClassObjects;
   my %objectsOfClasses = &getObjectsOfClasses;
+
   my @includes = &getIncludesFromFile($inAudioFile);
+
   my @fullIncludeList = &buildIncludeFileList(\@includes);
+
   my %data = &findClassStuffInLibs(\@audioDataReqs, \@fullIncludeList);
-  #say Dumper(\%data);
+  #say STDERR Dumper(\%data);
 
   ## mmmm ... sort by first array element of hash objects
   my @menuStruct = &buildCppStructFromGarbage(\%objectsOfClasses, \%data);
-  #say Dumper(\@menuStruct);
-  #say Dumper(\$menuStruct[0]);
   for my $bit (@menuStruct) {
     my @arr = @{$bit};
     # TODO this seems broken
     next unless @arr;
     my $effectName = $arr[0]{effectName};
-    say $effectName;
-    say Dumper(\$bit);
+    if (! defined $effectName) {
+      say "BORKEN!!!!!!!1";
+      say Dumper(\$bit);
+    } else {
+      say $effectName;
+      say Dumper(\$bit);
+    }
   }
   # so the idea here is to take a chunk of audio code (get that from argument parsing) and
   # understand what's in there, to write a bunch of c++ code for the teensy. then recompile it all
