@@ -1,6 +1,9 @@
 #!/usr/bin/env perl
 # by William Hofferbert
 #
+# so the idea here is to take a chunk of audio code (get that from argument parsing) and
+# understand what's in there, to write a bunch of c++ code for the teensy. then recompile it all.
+# hoo boy.
 
 use 5.010;				# say
 use strict;				# good form
@@ -208,7 +211,7 @@ sub findClassStuffInLibs {
       #  TODO
       #  DEBUG
       # 
-      say STDERR $fileData if $matchedReq =~ /AudioEffectChorus|AudioAnalyzeNoteFrequency/;
+      #say STDERR $fileData if $matchedReq =~ /AudioEffectChorus|AudioAnalyzeNoteFrequency/;
       # 
       # 
 
@@ -264,12 +267,6 @@ sub cppCallDeconstructor {
       my $callType = $1;
       my $callName = $2;
 
-      # mmmm
-      if ($callName =~ /begin/) {
-        # skip begin ?
-        return;
-      }
-
       $hash{effectName} = $effectName;
       $hash{effectType} = $effectType;
       $hash{callType} = $callType;
@@ -294,7 +291,7 @@ sub cppCallDeconstructor {
   return %hash;
 }
 
-sub buildCppStructFromGarbage {
+sub buildMemStructFromGarbage {
   my ($objClassRef, $dataRef) = @_;
   my %objectsOfClasses = %{$objClassRef};
   my %data = %{$dataRef};
@@ -322,11 +319,14 @@ sub buildCppStructFromGarbage {
     if (exists $data{$effectType}{paramFuncs}) {
       # param stuff
       for my $modifier (@{$data{$effectType}{paramFuncs}}) {
+        # skip begins and pointer things
+        next if $modifier =~ /begin|\*/;
         my %layout = &cppCallDeconstructor($specificEffect, $effectType, $modifier);
         if (keys %layout) {
           push(@effectSettings, \%layout)
         } else {
-          say STDERR "$specificEffect $effectType has broken paramFunc";
+          say STDERR "$specificEffect $effectType has broken paramFunc ; couldn't deconstruct call";
+          say STDERR "$modifier";
         }
       }
     }
@@ -354,6 +354,80 @@ sub buildCppStructFromGarbage {
 }
 
 
+sub organizeLogic {
+  my @struct = (@_);
+  my %brain;
+  $brain{effectMenuLength} = scalar @struct;
+  for my $effectData (@struct) {
+    my @effectData = @{$effectData};
+    my $effectName = $effectData[0]{effectName};
+    if (! defined $effectName) {
+      say "BORKEN!!!!!!!1";
+      say Dumper(\$effectData);
+    } else {
+      # 
+      # effects list menu (menu 1)
+      # 
+      # effectName is referring to the object well have to work on
+      # 
+      push @{$brain{effectMenuOrder}}, $effectName;
+      my %counter;
+      my @nameMap;
+      for my $effectParams (@effectData) {
+        # 
+        # Parameter List menu (menu 2)
+        # 
+        # These get called as methods of the object
+        # ${effectName}.${callName}()
+        # 
+        # TODO this has to keep track of call return types
+        # 
+        # TODO also seem to be messing up AudioAnalyzeNoteFrequency notefreq1 threshold call
+        # 
+        my %paramHash = %{$effectParams};
+        my $callName = $paramHash{callName};
+        my $menuName = $callName;
+        $counter{$callName}++;
+        #print "Effect: $effectName ; ";
+        #say Dumper(\%effSettingsHash);
+        # 
+        # 
+        # TODO this has to check if it's got a list of parameters
+        # or if it's a VOID call and just needs to be ran.
+        # 
+        # TODO also, we need to check if this thing is mising the param AND
+        # the bool, which indicates it's something that'd have to be
+        # 
+# COMMENTED FOR DEBUG
+#        my $numParams = scalar @{$paramHash{params}};
+#        if ($counter{$callName} gt 1) {
+#          # change menuName
+#          $menuName = "$menuName - Par $numParams";
+#        }
+#        push(@{$brain{$effectName}{paramList}}, $menuName);
+#        $brain{$effectName}{sizeOfParams} = $numParams;
+#        # for every param, set up it's submenu
+#        for my $param (@{$paramHash{params}}) {
+#          # 
+#          # parameter select menu (menu 3)
+#          # 
+#          my ($paramAdjType, $paramAdjName) = @{$param};
+#          push (@{$brain{$effectName}{$menuName}{paramListOrder}}, $paramAdjName);
+#          
+#        }
+#        my @nameMapMember = ($menuName, $callName);
+#        push @nameMap, \@nameMapMember;
+      }
+      @{$brain{$effectName}{nameMap}} = @nameMap;
+      # DEBUG
+      say $effectName;
+      say Dumper(\$effectData);
+    }
+  }
+  return %brain;
+}
+
+
 sub main {
   &handle_args;			# deal with arguments
   &sanity;			# make sure things make sense
@@ -370,23 +444,11 @@ sub main {
   #say STDERR Dumper(\%data);
 
   ## mmmm ... sort by first array element of hash objects
-  my @menuStruct = &buildCppStructFromGarbage(\%objectsOfClasses, \%data);
-  for my $bit (@menuStruct) {
-    my @arr = @{$bit};
-    # TODO this seems broken
-    next unless @arr;
-    my $effectName = $arr[0]{effectName};
-    if (! defined $effectName) {
-      say "BORKEN!!!!!!!1";
-      say Dumper(\$bit);
-    } else {
-      say $effectName;
-      say Dumper(\$bit);
-    }
-  }
-  # so the idea here is to take a chunk of audio code (get that from argument parsing) and
-  # understand what's in there, to write a bunch of c++ code for the teensy. then recompile it all
-  # hoo boy.
+  my @menuStruct = &buildMemStructFromGarbage(\%objectsOfClasses, \%data);
+
+  # brain
+  my %result = &organizeLogic(@menuStruct);
+  say Dumper(\%result);
 }
 
 &main;
